@@ -42,25 +42,26 @@ public class GameAdapter extends RecyclerView.Adapter<GameAdapter.GameViewHolder
 
         holder.tvNombre.setText(game.getNombre());
         holder.tvPlataforma.setText(game.getPlataforma());
-        holder.tvEstado.setText(game.getEstado());
         holder.tvHoras.setText(game.getHorasJugadas() + "h jugadas");
-        holder.tvPuntuacion.setText("⭐ " + game.getPuntuacion() + "/10");
-        holder.tvFecha.setText("Última sesión: " + game.getFechaUltimaSesion());
+        holder.tvPuntuacion.setText(game.getPuntuacion() + "/10");
+        holder.tvFecha.setText(game.getFechaUltimaSesion());
+        holder.tvEstado.setText(game.getEstado());
 
-        // Color del estado
-        int colorRes;
+        int color;
         switch (game.getEstado()) {
             case "Completado":
-                colorRes = context.getResources().getColor(R.color.estado_completado, null);
+                color = 0xFF7C9FD4;
                 break;
             case "Abandonado":
-                colorRes = context.getResources().getColor(R.color.estado_abandonado, null);
+                color = 0xFFD47C7C;
                 break;
-            default: // Jugando
-                colorRes = context.getResources().getColor(R.color.estado_jugando, null);
+            default:
+                color = 0xFF7CBFA0;
                 break;
         }
-        holder.tvEstado.setBackgroundColor(colorRes);
+        holder.tvEstado.setTextColor(color);
+        holder.tvEstado.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        holder.barraEstado.setBackgroundColor(color);
 
         holder.cardView.setOnClickListener(v -> listener.onGameClick(game));
         holder.cardView.setOnLongClickListener(v -> {
@@ -81,11 +82,13 @@ public class GameAdapter extends RecyclerView.Adapter<GameAdapter.GameViewHolder
 
     static class GameViewHolder extends RecyclerView.ViewHolder {
         CardView cardView;
+        View barraEstado;
         TextView tvNombre, tvPlataforma, tvEstado, tvHoras, tvPuntuacion, tvFecha;
 
         public GameViewHolder(@NonNull View itemView) {
             super(itemView);
             cardView = itemView.findViewById(R.id.cardView);
+            barraEstado = itemView.findViewById(R.id.barraEstado);
             tvNombre = itemView.findViewById(R.id.tvNombre);
             tvPlataforma = itemView.findViewById(R.id.tvPlataforma);
             tvEstado = itemView.findViewById(R.id.tvEstado);

@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
@@ -16,6 +17,8 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements GameAdapter.OnGameClickListener {
@@ -26,34 +29,28 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
     private List<Game> gameList;
     private FloatingActionButton fab;
     private SharedPreferences prefs;
+    private String filtroActivo = "Todos";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Toolbar
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        // Preferencias
         prefs = getSharedPreferences("gamelog_prefs", MODE_PRIVATE);
-
-        // Notificaciones
         NotificationHelper.createNotificationChannel(this);
-
-        // DB
         dbHelper = new DatabaseHelper(this);
 
-        // RecyclerView
         recyclerView = findViewById(R.id.recyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-        // FAB
         fab = findViewById(R.id.fab);
         fab.setOnClickListener(v -> openAddGameActivity());
 
         loadGames();
+        setupFiltros();
     }
 
     @Override
@@ -63,12 +60,49 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
     }
 
     private void loadGames() {
-        gameList = dbHelper.getAllGames();
+        List<Game> todos = dbHelper.getAllGames();
+        if (filtroActivo.equals("Todos")) {
+            gameList = todos;
+        } else {
+            gameList = new ArrayList<>();
+            for (Game g : todos) {
+                if (g.getEstado().equals(filtroActivo)) gameList.add(g);
+            }
+        }
         if (adapter == null) {
             adapter = new GameAdapter(this, gameList, this);
             recyclerView.setAdapter(adapter);
         } else {
             adapter.updateList(gameList);
+        }
+    }
+
+    private void setupFiltros() {
+        TextView filtroTodos = findViewById(R.id.filtroTodos);
+        TextView filtroJugando = findViewById(R.id.filtroJugando);
+        TextView filtroCompletado = findViewById(R.id.filtroCompletado);
+        TextView filtroAbandonado = findViewById(R.id.filtroAbandonado);
+
+        List<TextView> chips = Arrays.asList(filtroTodos, filtroJugando, filtroCompletado, filtroAbandonado);
+        List<String> valores = Arrays.asList("Todos", "Jugando", "Completado", "Abandonado");
+
+        for (int i = 0; i < chips.size(); i++) {
+            final String valor = valores.get(i);
+            chips.get(i).setOnClickListener(v -> {
+                filtroActivo = valor;
+                for (TextView chip : chips) {
+                    chip.setBackgroundResource(R.drawable.chip_unselected);
+                }
+                // Restaurar colores de texto de cada chip
+                filtroTodos.setTextColor(getResources().getColor(android.R.color.white, null));
+                filtroJugando.setTextColor(0xFF7CBFA0);
+                filtroCompletado.setTextColor(0xFF7C9FD4);
+                filtroAbandonado.setTextColor(0xFFD47C7C);
+
+                ((TextView) v).setBackgroundResource(R.drawable.chip_selected);
+                ((TextView) v).setTextColor(getResources().getColor(android.R.color.white, null));
+                loadGames();
+            });
         }
     }
 
@@ -111,7 +145,6 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
             showStatsDialog();
             return true;
         } else if (id == R.id.action_search_web) {
-            // Intent implícito — buscar en web
             Intent intent = new Intent(Intent.ACTION_VIEW,
                     Uri.parse("https://www.google.com/search?q=videojuegos+recomendados"));
             startActivity(intent);
@@ -126,11 +159,11 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
         int abandonados = dbHelper.countByEstado("Abandonado");
         int total = gameList.size();
 
-        String msg = "📊 Tu GameLog\n\n" +
+        String msg = "Tu GameLog\n\n" +
                 "Total: " + total + " juegos\n" +
-                "🎮 Jugando: " + jugando + "\n" +
-                "🏆 Completados: " + completados + "\n" +
-                "❌ Abandonados: " + abandonados;
+                "Jugando: " + jugando + "\n" +
+                "Completados: " + completados + "\n" +
+                "Abandonados: " + abandonados;
 
         new AlertDialog.Builder(this)
                 .setTitle("Estadísticas")
