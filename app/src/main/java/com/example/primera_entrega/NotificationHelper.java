@@ -43,10 +43,10 @@ public class NotificationHelper {
     }
 
     public static void sendGameAddedNotification(Context context, String gameName) {
-        sendNotification(context, "🎮 Juego añadido", gameName + " se ha añadido a tu GameLog");
+        sendNotification(context, "Juego añadido", gameName + " se ha añadido a tu GameLog");
     }
 
     public static void sendGameCompletedNotification(Context context, String gameName) {
-        sendNotification(context, "🏆 ¡Juego completado!", "Has completado " + gameName + ". ¡Enhorabuena!");
+        sendNotification(context, "¡Juego completado!", "Has completado " + gameName + ". ¡Enhorabuena!");
     }
 }

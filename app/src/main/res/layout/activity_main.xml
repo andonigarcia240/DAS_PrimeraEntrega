@@ -4,12 +4,14 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#1E1E2E">
+    android:background="#1E1E2E"
+    android:fitsSystemWindows="true">
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:elevation="0dp"
+        android:fitsSystemWindows="true"
         android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar">
 
         <androidx.appcompat.widget.Toolbar
@@ -64,7 +66,7 @@
                     android:text="Jugando"
                     android:textSize="13sp"
                     android:textColor="#7CBFA0"
-                    android:background="@drawable/chip_selected"
+                    android:background="@drawable/chip_unselected"
                     android:paddingHorizontal="16dp"
                     android:paddingVertical="8dp"
                     android:layout_marginEnd="8dp"/>
@@ -76,7 +78,7 @@
                     android:text="Completado"
                     android:textSize="13sp"
                     android:textColor="#7C9FD4"
-                    android:background="@drawable/chip_selected"
+                    android:background="@drawable/chip_unselected"
                     android:paddingHorizontal="16dp"
                     android:paddingVertical="8dp"
                     android:layout_marginEnd="8dp"/>
@@ -88,7 +90,7 @@
                     android:text="Abandonado"
                     android:textSize="13sp"
                     android:textColor="#D47C7C"
-                    android:background="@drawable/chip_selected"
+                    android:background="@drawable/chip_unselected"
                     android:paddingHorizontal="16dp"
                     android:paddingVertical="8dp"/>
 

@@ -1,17 +1,23 @@
 package com.example.primera_entrega;
 
+import android.Manifest;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -22,6 +28,8 @@ import java.util.Arrays;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements GameAdapter.OnGameClickListener {
+
+    private static final int REQUEST_NOTIFICATION_PERMISSION = 1001;
 
     private RecyclerView recyclerView;
     private GameAdapter adapter;
@@ -40,7 +48,6 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
         setSupportActionBar(toolbar);
 
         prefs = getSharedPreferences("gamelog_prefs", MODE_PRIVATE);
-        NotificationHelper.createNotificationChannel(this);
         dbHelper = new DatabaseHelper(this);
 
         recyclerView = findViewById(R.id.recyclerView);
@@ -49,8 +56,44 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
         fab = findViewById(R.id.fab);
         fab.setOnClickListener(v -> openAddGameActivity());
 
+        // Pedir permiso de notificaciones en Android 13+
+        requestNotificationPermission();
+
         loadGames();
         setupFiltros();
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        REQUEST_NOTIFICATION_PERMISSION);
+            } else {
+                NotificationHelper.createNotificationChannel(this);
+            }
+        } else {
+            NotificationHelper.createNotificationChannel(this);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
+            if (grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                NotificationHelper.createNotificationChannel(this);
+            } else {
+                Toast.makeText(this,
+                        "Sin permisos no se mostrarán notificaciones",
+                        Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     @Override
@@ -83,8 +126,10 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
         TextView filtroCompletado = findViewById(R.id.filtroCompletado);
         TextView filtroAbandonado = findViewById(R.id.filtroAbandonado);
 
-        List<TextView> chips = Arrays.asList(filtroTodos, filtroJugando, filtroCompletado, filtroAbandonado);
-        List<String> valores = Arrays.asList("Todos", "Jugando", "Completado", "Abandonado");
+        List<TextView> chips = Arrays.asList(filtroTodos, filtroJugando,
+                filtroCompletado, filtroAbandonado);
+        List<String> valores = Arrays.asList("Todos", "Jugando",
+                "Completado", "Abandonado");
 
         for (int i = 0; i < chips.size(); i++) {
             final String valor = valores.get(i);
@@ -93,7 +138,6 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
                 for (TextView chip : chips) {
                     chip.setBackgroundResource(R.drawable.chip_unselected);
                 }
-                // Restaurar colores de texto de cada chip
                 filtroTodos.setTextColor(getResources().getColor(android.R.color.white, null));
                 filtroJugando.setTextColor(0xFF7CBFA0);
                 filtroCompletado.setTextColor(0xFF7C9FD4);
@@ -159,7 +203,7 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
         int abandonados = dbHelper.countByEstado("Abandonado");
         int total = gameList.size();
 
-        String msg = "Tu GameLog\n\n" +
+        String msg = "📊 Tu GameLog\n\n" +
                 "Total: " + total + " juegos\n" +
                 "Jugando: " + jugando + "\n" +
                 "Completados: " + completados + "\n" +
