@@ -20,4 +20,10 @@
         android:icon="@android:drawable/ic_dialog_map"
         app:showAsAction="ifRoom"/>
 
+    <item
+        android:id="@+id/action_profile"
+        android:title="Perfil"
+        android:icon="@android:drawable/ic_menu_myplaces"
+        app:showAsAction="ifRoom"/>
+
 </menu>
