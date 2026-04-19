@@ -8,16 +8,21 @@ import android.widget.*;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
+import org.json.JSONObject;
+
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class GameDetailActivity extends AppCompatActivity {
 
     private EditText etNombre, etPlataforma, etHoras, etPuntuacion, etNotas;
     private Spinner spinnerEstado;
     private Button btnGuardar, btnBuscarWeb;
-    private DatabaseHelper dbHelper;
+    private SessionManager sessionManager;
+    private ExecutorService executor = Executors.newSingleThreadExecutor();
     private int gameId = -1;
 
     private final String[] estados = {"Jugando", "Completado", "Abandonado"};
@@ -31,7 +36,7 @@ public class GameDetailActivity extends AppCompatActivity {
         setSupportActionBar(toolbar);
         if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
-        dbHelper = new DatabaseHelper(this);
+        sessionManager = new SessionManager(this);
 
         etNombre = findViewById(R.id.etNombre);
         etPlataforma = findViewById(R.id.etPlataforma);
@@ -42,13 +47,11 @@ public class GameDetailActivity extends AppCompatActivity {
         btnGuardar = findViewById(R.id.btnGuardar);
         btnBuscarWeb = findViewById(R.id.btnBuscarWeb);
 
-        // Spinner
         ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_item, estados);
         spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinnerEstado.setAdapter(spinnerAdapter);
 
-        // Modo edición
         gameId = getIntent().getIntExtra("game_id", -1);
         if (gameId != -1) {
             if (getSupportActionBar() != null) getSupportActionBar().setTitle("Editar juego");
@@ -59,35 +62,57 @@ public class GameDetailActivity extends AppCompatActivity {
 
         btnGuardar.setOnClickListener(v -> saveGame());
 
-        // Intent implícito: buscar el juego en Google
         btnBuscarWeb.setOnClickListener(v -> {
             String nombre = etNombre.getText().toString().trim();
             if (nombre.isEmpty()) {
-                Toast.makeText(this, "Escribe el nombre del juego primero", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Escribe el nombre del juego primero",
+                        Toast.LENGTH_SHORT).show();
                 return;
             }
             Intent intent = new Intent(Intent.ACTION_VIEW,
-                    Uri.parse("https://www.google.com/search?q=" + Uri.encode(nombre + " videojuego")));
+                    Uri.parse("https://www.google.com/search?q=" +
+                            Uri.encode(nombre + " videojuego")));
             startActivity(intent);
         });
     }
 
     private void loadGameData() {
-        Game game = dbHelper.getGameById(gameId);
-        if (game != null) {
-            etNombre.setText(game.getNombre());
-            etPlataforma.setText(game.getPlataforma());
-            etHoras.setText(String.valueOf(game.getHorasJugadas()));
-            etPuntuacion.setText(String.valueOf(game.getPuntuacion()));
-            etNotas.setText(game.getNotas());
-
-            for (int i = 0; i < estados.length; i++) {
-                if (estados[i].equals(game.getEstado())) {
-                    spinnerEstado.setSelection(i);
-                    break;
+        executor.execute(() -> {
+            try {
+                String response = ApiClient.getJuegos(sessionManager.getUserId());
+                JSONObject json = new JSONObject(response);
+                if (json.getBoolean("success")) {
+                    var array = json.getJSONArray("juegos");
+                    for (int i = 0; i < array.length(); i++) {
+                        JSONObject j = array.getJSONObject(i);
+                        if (j.getInt("id") == gameId) {
+                            runOnUiThread(() -> {
+                                try {
+                                    etNombre.setText(j.getString("nombre"));
+                                    etPlataforma.setText(j.getString("plataforma"));
+                                    etHoras.setText(String.valueOf(j.getDouble("horas_jugadas")));
+                                    etPuntuacion.setText(String.valueOf(j.getInt("puntuacion")));
+                                    etNotas.setText(j.getString("notas"));
+                                    String estado = j.getString("estado");
+                                    for (int k = 0; k < estados.length; k++) {
+                                        if (estados[k].equals(estado)) {
+                                            spinnerEstado.setSelection(k);
+                                            break;
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            });
+                            break;
+                        }
+                    }
                 }
+            } catch (Exception e) {
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Error cargando juego", Toast.LENGTH_SHORT).show());
             }
-        }
+        });
     }
 
     private void saveGame() {
@@ -111,24 +136,44 @@ public class GameDetailActivity extends AppCompatActivity {
             return;
         }
 
-        String fecha = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(new Date());
+        String fecha = new SimpleDateFormat("dd/MM/yyyy",
+                Locale.getDefault()).format(new Date());
 
-        Game game = new Game(gameId == -1 ? 0 : gameId, nombre, plataforma,
-                estado, horas, puntuacion, notas, fecha);
+        btnGuardar.setEnabled(false);
 
-        if (gameId == -1) {
-            dbHelper.insertGame(game);
-            NotificationHelper.sendGameAddedNotification(this, nombre);
-            Toast.makeText(this, "Juego añadido ✅", Toast.LENGTH_SHORT).show();
-        } else {
-            dbHelper.updateGame(game);
-            if (estado.equals("Completado")) {
-                NotificationHelper.sendGameCompletedNotification(this, nombre);
+        executor.execute(() -> {
+            try {
+                String response;
+                if (gameId == -1) {
+                    response = ApiClient.addJuego(sessionManager.getUserId(),
+                            nombre, plataforma, estado, horas, puntuacion, notas, fecha);
+                } else {
+                    response = ApiClient.updateJuego(gameId, sessionManager.getUserId(),
+                            nombre, plataforma, estado, horas, puntuacion, notas, fecha);
+                }
+
+                JSONObject json = new JSONObject(response);
+                runOnUiThread(() -> {
+                    btnGuardar.setEnabled(true);
+                    if (json.optBoolean("success")) {
+                        if (gameId == -1) {
+                            NotificationHelper.sendGameAddedNotification(this, nombre);
+                        } else if (estado.equals("Completado")) {
+                            NotificationHelper.sendGameCompletedNotification(this, nombre);
+                        }
+                        Toast.makeText(this, "Juego guardado", Toast.LENGTH_SHORT).show();
+                        finish();
+                    } else {
+                        Toast.makeText(this, "Error al guardar", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    btnGuardar.setEnabled(true);
+                    Toast.makeText(this, "Error de conexión", Toast.LENGTH_SHORT).show();
+                });
             }
-            Toast.makeText(this, "Juego actualizado ✅", Toast.LENGTH_SHORT).show();
-        }
-
-        finish();
+        });
     }
 
     @Override

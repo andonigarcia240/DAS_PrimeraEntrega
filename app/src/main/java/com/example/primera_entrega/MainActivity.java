@@ -1,31 +1,31 @@
 package com.example.primera_entrega;
 
-import android.Manifest;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity implements GameAdapter.OnGameClickListener {
 
@@ -33,11 +33,12 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
 
     private RecyclerView recyclerView;
     private GameAdapter adapter;
-    private DatabaseHelper dbHelper;
-    private List<Game> gameList;
+    private List<Game> gameList = new ArrayList<>();
     private FloatingActionButton fab;
-    private SharedPreferences prefs;
+    private ProgressBar progressBar;
     private String filtroActivo = "Todos";
+    private SessionManager sessionManager;
+    private ExecutorService executor = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,53 +48,22 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        prefs = getSharedPreferences("gamelog_prefs", MODE_PRIVATE);
-        dbHelper = new DatabaseHelper(this);
+        sessionManager = new SessionManager(this);
+        NotificationHelper.createNotificationChannel(this);
 
         recyclerView = findViewById(R.id.recyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+        progressBar = new ProgressBar(this);
+
         fab = findViewById(R.id.fab);
         fab.setOnClickListener(v -> openAddGameActivity());
 
-        // Pedir permiso de notificaciones en Android 13+
-        requestNotificationPermission();
+        adapter = new GameAdapter(this, gameList, this);
+        recyclerView.setAdapter(adapter);
 
         loadGames();
         setupFiltros();
-    }
-
-    private void requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this,
-                    Manifest.permission.POST_NOTIFICATIONS)
-                    != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                        REQUEST_NOTIFICATION_PERMISSION);
-            } else {
-                NotificationHelper.createNotificationChannel(this);
-            }
-        } else {
-            NotificationHelper.createNotificationChannel(this);
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
-            if (grantResults.length > 0
-                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                NotificationHelper.createNotificationChannel(this);
-            } else {
-                Toast.makeText(this,
-                        "Sin permisos no se mostrarán notificaciones",
-                        Toast.LENGTH_LONG).show();
-            }
-        }
     }
 
     @Override
@@ -103,21 +73,51 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
     }
 
     private void loadGames() {
-        List<Game> todos = dbHelper.getAllGames();
-        if (filtroActivo.equals("Todos")) {
-            gameList = todos;
-        } else {
-            gameList = new ArrayList<>();
-            for (Game g : todos) {
-                if (g.getEstado().equals(filtroActivo)) gameList.add(g);
+        executor.execute(() -> {
+            try {
+                String response = ApiClient.getJuegos(sessionManager.getUserId());
+                JSONObject json = new JSONObject(response);
+
+                List<Game> todos = new ArrayList<>();
+                if (json.getBoolean("success")) {
+                    JSONArray array = json.getJSONArray("juegos");
+                    for (int i = 0; i < array.length(); i++) {
+                        JSONObject j = array.getJSONObject(i);
+                        Game game = new Game(
+                                j.getInt("id"),
+                                j.getString("nombre"),
+                                j.getString("plataforma"),
+                                j.getString("estado"),
+                                (float) j.getDouble("horas_jugadas"),
+                                j.getInt("puntuacion"),
+                                j.getString("notas"),
+                                j.getString("fecha_ultima_sesion")
+                        );
+                        todos.add(game);
+                    }
+                }
+
+                List<Game> filtrados;
+                if (filtroActivo.equals("Todos")) {
+                    filtrados = todos;
+                } else {
+                    filtrados = new ArrayList<>();
+                    for (Game g : todos) {
+                        if (g.getEstado().equals(filtroActivo)) filtrados.add(g);
+                    }
+                }
+
+                final List<Game> resultado = filtrados;
+                runOnUiThread(() -> {
+                    gameList = resultado;
+                    adapter.updateList(gameList);
+                });
+
+            } catch (Exception e) {
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Error cargando juegos", Toast.LENGTH_SHORT).show());
             }
-        }
-        if (adapter == null) {
-            adapter = new GameAdapter(this, gameList, this);
-            recyclerView.setAdapter(adapter);
-        } else {
-            adapter.updateList(gameList);
-        }
+        });
     }
 
     private void setupFiltros() {
@@ -168,9 +168,18 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
                 .setTitle("Eliminar juego")
                 .setMessage("¿Eliminar \"" + game.getNombre() + "\" de tu GameLog?")
                 .setPositiveButton("Eliminar", (dialog, which) -> {
-                    dbHelper.deleteGame(game.getId());
-                    loadGames();
-                    Toast.makeText(this, "Juego eliminado", Toast.LENGTH_SHORT).show();
+                    executor.execute(() -> {
+                        try {
+                            ApiClient.deleteJuego(game.getId(), sessionManager.getUserId());
+                            runOnUiThread(() -> {
+                                loadGames();
+                                Toast.makeText(this, "Juego eliminado", Toast.LENGTH_SHORT).show();
+                            });
+                        } catch (Exception e) {
+                            runOnUiThread(() ->
+                                    Toast.makeText(this, "Error al eliminar", Toast.LENGTH_SHORT).show());
+                        }
+                    });
                 })
                 .setNegativeButton("Cancelar", null)
                 .show();
@@ -194,24 +203,27 @@ public class MainActivity extends AppCompatActivity implements GameAdapter.OnGam
             startActivity(intent);
             return true;
         } else if (id == R.id.action_map) {
-        startActivity(new Intent(this, MapActivity.class));
-        return true;
+            startActivity(new Intent(this, MapActivity.class));
+            return true;
         } else if (id == R.id.action_profile) {
-        startActivity(new Intent(this, ProfileActivity.class));
-        return true;
+            startActivity(new Intent(this, ProfileActivity.class));
+            return true;
         }
-
         return super.onOptionsItemSelected(item);
     }
 
     private void showStatsDialog() {
-        int jugando = dbHelper.countByEstado("Jugando");
-        int completados = dbHelper.countByEstado("Completado");
-        int abandonados = dbHelper.countByEstado("Abandonado");
-        int total = gameList.size();
+        int jugando = 0, completados = 0, abandonados = 0;
+        for (Game g : gameList) {
+            switch (g.getEstado()) {
+                case "Jugando": jugando++; break;
+                case "Completado": completados++; break;
+                case "Abandonado": abandonados++; break;
+            }
+        }
 
         String msg = "Tu GameLog\n\n" +
-                "Total: " + total + " juegos\n" +
+                "Total: " + gameList.size() + " juegos\n" +
                 "Jugando: " + jugando + "\n" +
                 "Completados: " + completados + "\n" +
                 "Abandonados: " + abandonados;
