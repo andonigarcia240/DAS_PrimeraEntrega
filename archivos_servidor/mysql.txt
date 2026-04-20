@@ -1,0 +1,30 @@
+sudo mysql -u root
+
+CREATE DATABASE gamelog;
+CREATE USER 'gameloguser'@'localhost' IDENTIFIED BY '1234';
+GRANT ALL PRIVILEGES ON gamelog.* TO 'gameloguser'@'localhost';
+FLUSH PRIVILEGES;
+
+USE gamelog;
+
+CREATE TABLE usuarios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    foto_perfil VARCHAR(255),
+    fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE juegos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    nombre VARCHAR(100) NOT NULL,
+    plataforma VARCHAR(50),
+    estado VARCHAR(20),
+    horas_jugadas FLOAT DEFAULT 0,
+    puntuacion INTEGER DEFAULT 0,
+    notas TEXT,
+    fecha_ultima_sesion VARCHAR(20),
+    FOREIGN KEY (user_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
